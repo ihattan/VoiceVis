@@ -9,7 +9,7 @@ class App(QMainWindow):
         super().__init__()
         self.title = 'Voice Vis 0.1'
         self.left = 150
-        self.top = 150
+        self.top = 40
         self.width = 1000
         self.height = 1000
         self.initUI()
@@ -24,12 +24,13 @@ class App(QMainWindow):
         center = (int(self.width/2), int(self.height/2))
         number_of_points = 12
         span_angle = int(360 / number_of_points)
-        points_on_circle = [p * span_angle for p in range(number_of_points)]
+        offset = int(0.5 * span_angle)
+        points_on_circle = [(p * span_angle) + offset for p in range(number_of_points)]
 
-        outer_radius = 250
+        outer_radius = 400
         outer_circle_frame = QRect(center[0] - outer_radius, center[1] - outer_radius, outer_radius*2, outer_radius*2)
 
-        inner_radius = 150
+        inner_radius = 200
         inner_circle_frame = QRect(center[0] - inner_radius, center[1] - inner_radius, inner_radius*2, inner_radius*2)
 
         painter = QPainter()
