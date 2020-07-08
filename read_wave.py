@@ -3,7 +3,7 @@ import scipy.io
 import numpy as np
 import matplotlib.pyplot as plt
 
-fname = 'C:\\Users\\ianjh\\Desktop\\VoiceVIs\\output.wav'
+fname = '.\\output.wav'
 
 rate, data = wavfile.read(fname)
 length = data.shape[0] / rate
