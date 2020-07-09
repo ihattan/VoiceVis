@@ -1,6 +1,6 @@
 import sys
 from vis import VisWidget
-from read_wave import WaveIO
+from waveio import WaveIO
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QGridLayout, QHBoxLayout, QVBoxLayout, QFileDialog
 from PyQt5.QtGui import QIcon, QPainter, QBrush, QPen, QColor
 from PyQt5.QtCore import Qt, QCoreApplication, QRect #, QPoint, QSize
