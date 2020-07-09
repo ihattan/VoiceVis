@@ -19,13 +19,24 @@ class App(QWidget):
         self.initUI()
 
     def initUI(self):
+        buttonsWidth = int(self.width / 4)
+
         fileButton = QPushButton('Input File')
-        fileButton.setMaximumWidth(int(self.width / 4))
+        fileButton.setMaximumWidth(buttonsWidth)
         fileButton.clicked.connect(lambda : self.fileInput())
+
+        recButton = QPushButton('Record Audio')
+        recButton.setMaximumWidth(buttonsWidth)
+        recButton.clicked.connect(lambda : self.recordMic())
+
+        buttonsVBox = QVBoxLayout()
+        buttonsVBox.addWidget(fileButton)
+        buttonsVBox.addWidget(recButton)
+        buttonsVBox.addStretch()
 
         mainHBox = QHBoxLayout()
         mainHBox.addWidget(VisWidget())
-        mainHBox.addWidget(fileButton)
+        mainHBox.addLayout(buttonsVBox)
         self.setLayout(mainHBox)
 
         self.setWindowTitle('Voice Vis 0.1')
@@ -39,11 +50,14 @@ class App(QWidget):
         self.show()
 
     def fileInput(self):
-        fin = QFileDialog()
-        fname, _ = fin.getOpenFileName(self, filter='Wave File (*.wav)')
+        dialog = QFileDialog()
+        fname, _ = dialog.getOpenFileName(self, filter='Wave File (*.wav)')
         if fname is not None:
             waveObj = WaveIO()
             waveObj.read_wave(fname)
+
+    def recordMic(self):
+        None
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
