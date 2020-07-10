@@ -4,7 +4,7 @@ import wave
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
-RATE = 44100
+RATE = 48000
 
 def record():
 
@@ -30,12 +30,12 @@ def record():
 		print(str(e))
 
 	sample_width = p.get_sample_size(FORMAT)
-	
+
 	stream.stop_stream()
 	stream.close()
 	p.terminate()
-	
-	return sample_width, frames	
+
+	return sample_width, frames
 
 def record_to_file(file_path):
 	wf = wave.open(file_path, 'wb')
@@ -50,8 +50,8 @@ if __name__ == '__main__':
 	print('#' * 80)
 	print("Please speak word(s) into the microphone")
 	print('Press Ctrl+C to stop the recording')
-	
+
 	record_to_file('output.wav')
-	
+
 	print("Result written to output.wav")
 	print('#' * 80)
