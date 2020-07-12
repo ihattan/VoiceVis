@@ -15,6 +15,7 @@ class App(QWidget):
         self.yAdjust = int(self.screen.height() * 0.1)
         self.width = self.screen.width() - self.xAdjust
         self.height = self.screen.height() - self.yAdjust
+        self.vis = VisWidget()
 
         self.initUI()
 
@@ -35,7 +36,7 @@ class App(QWidget):
         buttonsVBox.addStretch()
 
         mainHBox = QHBoxLayout()
-        mainHBox.addWidget(VisWidget())
+        mainHBox.addWidget(self.vis)
         mainHBox.addLayout(buttonsVBox)
         self.setLayout(mainHBox)
 
@@ -52,9 +53,11 @@ class App(QWidget):
     def fileInput(self):
         dialog = QFileDialog()
         fname, _ = dialog.getOpenFileName(self, filter='Wave File (*.wav)')
-        if fname is not None:
-            waveObj = WaveIO()
-            waveObj.read_wave(fname)
+        assert fname is not None
+
+        waveObj = WaveIO(fname)
+        waveObj.read_wave()
+        self.vis.update(waveObj.fft_data)
 
     def recordMic(self):
         None
