@@ -9,8 +9,11 @@ class WaveIO():
     def __init__(self, fname):
         self.pa = pyaudio.PyAudio()
         self.wave_file = wave.open(fname, 'rb')
-        self.wave_data = np.empty([0, 2], dtype=np.int16)
         self.nchannels, self.sampwidth, self.framerate, self.nframes, _, _ = self.wave_file.getparams()
+        self.timestep = np.reciprocal(float(self.framerate))
+        self.wave_format = self.pa.get_format_from_width(self.sampwidth)
+        self.np_wave_format = self.pyAudioToNumpy(self.wave_format)
+        self.chunk = 256
 
         self.bins = np.array([
         63.571, 67.35, 71.356, 75.598, 80.092, 84.836, 89.882, 95.246, 100.91,
@@ -28,70 +31,74 @@ class WaveIO():
         'G#4', 'A4', 'A#4', 'B4', 'C5', 'C#5', 'D5', 'D#5', 'E5', 'F5', 'F#5',
         'G5', 'G#5', 'A5', 'A#5', 'B5', 'C6'])
 
-    def read_wave(self):
-        frame_byte_length = self.sampwidth * self.nchannels
-
-        def callback(in_data, frame_count, time_info, status):
-            curr_data = self.wave_file.readframes(frame_count)
-            data_nframes = int(len(curr_data) / frame_byte_length)
-            if len(curr_data) != 0:
-                conv_data = np.frombuffer(curr_data, dtype=np.int16)
-                shaped = np.reshape(conv_data, newshape=(data_nframes, self.nchannels))
-                self.wave_data = np.append(self.wave_data, shaped, axis=0)
-            return (curr_data, pyaudio.paContinue)
-
+    def read_wave(self, callback):
         # open stream using callback (3)
         stream = self.pa.open(
-                format=self.pa.get_format_from_width(self.sampwidth),
+                format=self.wave_format,
                 channels=self.nchannels,
                 rate=self.framerate,
-                output=True,
-                stream_callback=callback)
+                output=True)
 
-        # start the stream (4)
-        stream.start_stream()
+        data = self.wave_file.readframes(self.chunk*15)
+        stream.write(data)
 
-        # wait for stream to finish (5)
-        while stream.is_active():
-            time.sleep(0.1)
+        conv_data = np.frombuffer(data, dtype=self.np_wave_format)[::2]
 
-        # stop stream (6)
+        chunk = self.wave_file.readframes(self.chunk)
+
+        while len(chunk) > 0:
+            stream.write(chunk)
+
+            conv_chunk = np.frombuffer(chunk, dtype=self.np_wave_format)[::2]
+
+            conv_data = np.append(conv_data, conv_chunk)
+            callback(self.analyze_data(conv_data))
+
+            conv_data = conv_data[self.chunk:]
+
+            chunk = self.wave_file.readframes(self.chunk)
+
         stream.stop_stream()
         stream.close()
-        self.wave_file.close()
 
-        print(self.analyze_fft(self.wave_data[:, 0]))
-
-    def analyze_fft(self, data):
-        length = self.nframes / self.framerate
-        time_lin = np.linspace(0, length, self.nframes)
-        timestep = 1 / self.framerate
-
+    #perform fft analysis, requires 1-dimensional data
+    def analyze_data(self, data):
         spectrum = np.fft.fft(data)
-        frequency = np.fft.fftfreq(spectrum.size, d=timestep)
-        index = np.where(np.logical_and(frequency <= 1000, frequency >= 65))
+        frequency = np.fft.fftfreq(spectrum.size, d=self.timestep)
+        index = np.where(np.logical_and(frequency < self.bins[-1], frequency > self.bins[0]))
 
-        fft_spec = np.abs(timestep*spectrum[index].real)
+        fft_spec = np.abs(self.timestep*spectrum[index].real)
         fft_freq = frequency[index]
 
-        audible_ind = np.where(fft_spec >= 250.)
-        audible_freqs = fft_freq[audible_ind]
-        audible_specs = fft_spec[audible_ind]
+        if fft_spec.size == 0 or np.amax(fft_spec) == 0.:
+            return []
 
-        specs = np.zeros_like(self.notes, dtype=int)
+        fft_spec *= np.reciprocal(np.amax(fft_spec))
 
-        digi_freqs = np.digitize(audible_freqs, self.bins)
-        for i in range(len(audible_freqs)):
-            if specs[digi_freqs[i]] < audible_specs[i]:
-                specs[digi_freqs[i]] = audible_specs[i]
+        aud_threshold = 0.5
 
-        audible_notes_ind = np.where(specs > 0)
-        audible_notes = self.notes[audible_notes_ind]
-        audible_specs = specs[audible_notes_ind]
+        aud_ind = np.where(fft_spec > aud_threshold)
+        aud_freqs = fft_freq[aud_ind]
+        aud_specs = fft_spec[aud_ind]
 
-        return list(zip(audible_notes, audible_specs))
+        specs = np.zeros_like(self.notes, dtype=float)
 
-    def drawPlotlyGraphs(self, time_lin):
+        digi_freqs = np.digitize(aud_freqs, self.bins)
+        for i in range(digi_freqs.size):
+            if specs[digi_freqs[i]] < aud_specs[i]:
+                specs[digi_freqs[i]] = aud_specs[i]
+
+        aud_notes_ind = np.where(specs > 0.)
+        aud_notes = self.notes[aud_notes_ind]
+        aud_notes_specs = specs[aud_notes_ind]
+
+        #self.drawPlotlyGraphs(data, fft_freq, fft_spec)
+        return list(zip(aud_notes, aud_notes_specs))
+
+    def drawPlotlyGraphs(self, data, fft_freq, fft_spec):
+        length = data.shape[0] / self.framerate
+        time_lin = np.linspace(0, length, data.shape[0])
+
         # Create a figure
         fig = plt.figure()
         # Adjust white space between plots
@@ -101,19 +108,30 @@ class WaveIO():
         plt.xlabel('Time')
         plt.ylabel('Amplitude')
         plt.title('Damping')
-        data1.plot(time_lin, self.wave_data[:, 0], color='red', label='Amplitude')
+        data1.plot(time_lin, data, color='red', label='Amplitude')
         plt.legend()
         plt.minorticks_on()
         data2 = fig.add_subplot(2,1,2)
         plt.xlabel('Frequency')
         plt.ylabel('Signal')
         plt.title('Spectrum')
-        data2.plot(self.fft_freq, self.fft_spec, color='blue', linestyle='solid', marker='None', label='FFT', linewidth=1.5)
+        data2.plot(fft_freq, fft_spec, color='blue', linestyle='solid', marker='None', label='FFT', linewidth=1.5)
         plt.legend()
         plt.minorticks_on()
         # Show the data
         plt.show()
 
+    def pyAudioToNumpy(self, format):
+        formats = {
+            pyaudio.paFloat32: np.float32,
+            pyaudio.paUInt8: np.uint8,
+            pyaudio.paInt8: np.int8,
+            pyaudio.paInt16: np.int16,
+            pyaudio.paInt24: np.int32
+        }
+
+        return formats[format]
+
 if __name__ == '__main__':
     waveio = WaveIO('.\\output.wav')
-    waveio.read_wave()
+    waveio.read_wave(lambda x: print(x))
