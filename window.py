@@ -53,11 +53,11 @@ class App(QWidget):
     def fileInput(self):
         dialog = QFileDialog()
         fname, _ = dialog.getOpenFileName(self, filter='Wave File (*.wav)')
-        assert fname is not None
+        if fname is not None:
+            waveObj = WaveIO(fname)
+            waveObj.read_wave(self.vis.updateVis)
 
-        waveObj = WaveIO(fname)
-        waveObj.read_wave()
-        self.vis.update(waveObj.fft_data)
+        self.vis.radiiReset()
 
     def recordMic(self):
         None

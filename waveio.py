@@ -93,7 +93,7 @@ class WaveIO():
         aud_notes_specs = specs[aud_notes_ind]
 
         #self.drawPlotlyGraphs(data, fft_freq, fft_spec)
-        return list(zip(aud_notes, aud_notes_specs))
+        return list(zip(aud_notes_ind, aud_notes, aud_notes_specs))
 
     def drawPlotlyGraphs(self, data, fft_freq, fft_spec):
         length = data.shape[0] / self.framerate

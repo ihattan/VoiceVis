@@ -2,29 +2,31 @@ import sys
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QIcon, QPainter, QBrush, QPen, QColor
 from PyQt5.QtCore import Qt, QRect
-
-"""
-VisWidget range C2 - B4, frequencies:
-     C     C#    D     D#    E     F     F#    G     G#    A     A#    B
-2:  65.4  69.3  73.4  77.8  82.4  87.3  92.5  98.0 103.8 110.0 116.5 123.4
-3: 130.8 138.6 146.8 155.6 164.8 174.6 185.0 196.0 207.7 220.0 233.1 247.0
-4: 231.6 277.2 293.7 311.1 329.6 349.2 370.0 392.0 415.3 440.0 466.1 493.9
-"""
+import numpy as np
 
 class VisWidget(QWidget):
 
     def __init__(self):
         super().__init__()
 
-        self.notes_freqs = {}
+        # used for conversion from waveio data
+        self.notes = np.array([
+        'B1', 'C2', 'C#2', 'D2', 'D#2', 'E2', 'F2', 'F#2', 'G2', 'G#2', 'A2',
+        'A#2', 'B2', 'C3', 'C#3', 'D3', 'D#3', 'E3', 'F3', 'F#3', 'G3', 'G#3',
+        'A3', 'A#3', 'B3', 'C4', 'C#4', 'D4', 'D#4', 'E4', 'F4', 'F#4', 'G4',
+        'G#4', 'A4', 'A#4', 'B4', 'C5', 'C#5', 'D5', 'D#5', 'E5', 'F5', 'F#5',
+        'G5', 'G#5', 'A5', 'A#5', 'B5', 'C6'])
+
+        self.radiiCoeffs = np.zeros_like(self.notes, dtype=float)
 
         self.numSlices = 12 # 12 notes in an octave, 1 circle is 1 octave
-        self.spanAngle = int(360 / self.numSlices)
+        self.angleFrac = 16 # angles measured in 16ths when drawing
+        self.spanAngle = int(360 / self.numSlices) * self.angleFrac # degrees covered by a slice
 
-
-        # a list of size self.numSlices, equidistant points along a circle
-        self.slicePoints = []
-        self.calcSlicePoints()
+        # want slices centered on axes, starting positive Y
+        # 3 slices to start on pos-Y axis, -0.5 to center on axis
+        self.offset = int((3 - 0.5) * self.spanAngle)
+        self.slicePoints = [(p * self.spanAngle) + self.offset for p in range(self.numSlices)]
 
         # frames will be used to draw the circles/slices
         # QRect() objects to be utilized by paintEvent()
@@ -35,54 +37,58 @@ class VisWidget(QWidget):
 
         self.paintEvent(None)
 
+    def paintEvent(self, event):
+        frstRad = min(self.width(), self.height()) / 2.5
+        scndRad = frstRad * .75
+        thrdRad = frstRad * .50
+        frthRad = frstRad * .25
 
-    def calcSlicePoints(self):
-        offset = int(0.5 * self.spanAngle) # want slices centered on axes
-        self.slicePoints = [(p * self.spanAngle) + offset for p in range(self.numSlices)]
+        radInc = frthRad * 0.9
 
-    def calcFrames(self):
-        spanAngle = int(360 / self.numSlices)
-        offset = int(0.5 * spanAngle) # want slices centered on axes
-        slicePoints = [(p * spanAngle) + offset for p in range(self.numSlices)]
-
-        # first is largest, 1/3 the height of the given area
-        # rest of the radii are 2/3 and 1/3 the size of the first
-        frstRadius = int(min(self.width(), self.height()) / 2.5)
-        scndRadius = int(frstRadius * .75)
-        thrdRadius = int(frstRadius * .50)
-        frthRadius = int(frstRadius * .25)
-
-        # center of the visualization is offset to the left
+        # visualization is centered on the widget
         visCenterX = int(self.width() / 2)
         visCenterY = int(self.height() / 2)
-
-        self.frstFrame = QRect(visCenterX - frstRadius, visCenterY - frstRadius, frstRadius*2, frstRadius*2)
-        self.scndFrame = QRect(visCenterX - scndRadius, visCenterY - scndRadius, scndRadius*2, scndRadius*2)
-        self.thrdFrame = QRect(visCenterX - thrdRadius, visCenterY - thrdRadius, thrdRadius*2, thrdRadius*2)
-        self.frthFrame = QRect(visCenterX - frthRadius, visCenterY - frthRadius, frthRadius*2, frthRadius*2)
-
-    def paintEvent(self, event):
-        self.calcFrames()
 
         painter = QPainter()
         painter.begin(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        self.drawVis(painter)
-        painter.end()
 
-    def drawVis(self, painter):
-        angleFrac = 16 # angles measured in 16ths when drawing
+        #painter.drawText(self.width/2., 10, 'test')
+
         painter.setPen(Qt.white)
 
-        for p in self.slicePoints:
+        for i in range(self.numSlices):
             painter.setBrush(QColor(148, 141, 179))
-            painter.drawPie(self.frstFrame, p * angleFrac, self.spanAngle * angleFrac)
+            rad = int(frstRad + (radInc * self.radiiCoeffs[(0*self.numSlices) + i+1]))
+            frame = QRect(visCenterX - rad, visCenterY - rad, rad*2, rad*2)
+            painter.drawPie(frame, self.slicePoints[i], self.spanAngle)
+
             painter.setBrush(QColor(96, 88, 133))
-            painter.drawPie(self.scndFrame, p * angleFrac, self.spanAngle * angleFrac)
+            rad = int(scndRad + (radInc * self.radiiCoeffs[(1*self.numSlices) + i+1]))
+            frame = QRect(visCenterX - rad, visCenterY - rad, rad*2, rad*2)
+            painter.drawPie(frame, self.slicePoints[i], self.spanAngle)
+
             painter.setBrush(QColor(67, 59, 103))
-            painter.drawPie(self.thrdFrame, p * angleFrac, self.spanAngle * angleFrac)
+            rad = int(thrdRad + (radInc * self.radiiCoeffs[(2*self.numSlices) + i+1]))
+            frame = QRect(visCenterX - rad, visCenterY - rad, rad*2, rad*2)
+            painter.drawPie(frame, self.slicePoints[i], self.spanAngle)
+
             painter.setBrush(QColor(50, 35, 75))
-            painter.drawPie(self.frthFrame, p * angleFrac, self.spanAngle * angleFrac)
+            rad = int(frthRad + (radInc * self.radiiCoeffs[(3*self.numSlices) + i+1]))
+            frame = QRect(visCenterX - rad, visCenterY - rad, rad*2, rad*2)
+            painter.drawPie(frame, self.slicePoints[i], self.spanAngle)
+
+        painter.end()
+
+    def radiiReset(self):
+        self.radiiCoeffs = np.zeros_like(self.notes, dtype=float)
+        self.repaint()
+
+    def updateVis(self, changeData):
+        for noteInd, _, noteVol in changeData:
+            self.radiiCoeffs[noteInd] = noteVol
+
+        self.repaint()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
