@@ -1,9 +1,10 @@
 import sys
 from vis import VisWidget
-from waveio import WaveIO
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QGridLayout, QHBoxLayout, QVBoxLayout, QFileDialog
+from waveio import Wave
+from mic import Mic
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QRadioButton, QGridLayout, QHBoxLayout, QVBoxLayout, QFileDialog
 from PyQt5.QtGui import QIcon, QPainter, QBrush, QPen, QColor
-from PyQt5.QtCore import Qt, QCoreApplication, QRect #, QPoint, QSize
+from PyQt5.QtCore import Qt, QCoreApplication, QThread, QRect
 
 class App(QWidget):
 
@@ -15,24 +16,62 @@ class App(QWidget):
         self.yAdjust = int(self.screen.height() * 0.1)
         self.width = self.screen.width() - self.xAdjust
         self.height = self.screen.height() - self.yAdjust
+
         self.vis = VisWidget()
 
+        self.mic_active = False
+
+        self.fileButton = QPushButton('Input File')
+        self.startMic = QPushButton('Microphone On')
+        self.stopMic = QPushButton('Microphone Off')
+
+        self.threads = []
+
+        self.initWave()
+
         self.initUI()
+
+    def initWave(self):
+        self.waveThread = QThread()
+        self.waveObj = Wave()
+        self.waveObj.moveToThread(self.waveThread)
+        self.waveThread.started.connect(self.waveObj.readWave)
+        self.waveObj.update.connect(self.vis.updateVis)
+        self.waveObj.finished.connect(self.vis.radiiReset)
+        self.waveObj.finished.connect(self.waveThread.quit)
+
+    def initMic(self):
+        if self.mic_active:
+            return
+
+        micThread = QThread()
+        micObj = Mic()
+        micObj.moveToThread(micThread)
+        self.stopMic.clicked.connect(micObj.stream.stop_stream)
+        micThread.started.connect(micObj.listen)
+        micObj.update.connect(self.vis.updateVis)
+        micObj.finished.connect(self.vis.radiiReset)
+        micObj.finished.connect(micThread.quit)
+        micObj.finished.connect(self.micOff)
+        micThread.start()
+        self.mic_active = True
+        self.threads.append((micObj, micThread))
 
     def initUI(self):
         buttonsWidth = int(self.width / 4)
 
-        fileButton = QPushButton('Input File')
-        fileButton.setMaximumWidth(buttonsWidth)
-        fileButton.clicked.connect(lambda : self.fileInput())
+        self.fileButton.setMaximumWidth(buttonsWidth)
+        self.fileButton.clicked.connect(self.fileInput)
 
-        recButton = QPushButton('Record Audio')
-        recButton.setMaximumWidth(buttonsWidth)
-        recButton.clicked.connect(lambda : self.recordMic())
+        self.startMic.setMaximumWidth(buttonsWidth)
+        self.startMic.clicked.connect(self.initMic)
+
+        self.stopMic.setMaximumWidth(buttonsWidth)
 
         buttonsVBox = QVBoxLayout()
-        buttonsVBox.addWidget(fileButton)
-        buttonsVBox.addWidget(recButton)
+        buttonsVBox.addWidget(self.fileButton)
+        buttonsVBox.addWidget(self.startMic)
+        buttonsVBox.addWidget(self.stopMic)
         buttonsVBox.addStretch()
 
         mainHBox = QHBoxLayout()
@@ -46,7 +85,6 @@ class App(QWidget):
         #self.setWindowFlags(Qt.FramelessWindowHint)
 
         self.setGeometry(int(self.xAdjust / 2), int(self.yAdjust / 2), self.width, self.height)
-        #self.setFixedSize(self.width, self.height)
 
         self.show()
 
@@ -54,13 +92,11 @@ class App(QWidget):
         dialog = QFileDialog()
         fname, _ = dialog.getOpenFileName(self, filter='Wave File (*.wav)')
         if fname is not None:
-            waveObj = WaveIO(fname)
-            waveObj.read_wave(self.vis.updateVis)
+            self.waveObj.setFileName(fname)
+            self.waveThread.start()
 
-        self.vis.radiiReset()
-
-    def recordMic(self):
-        None
+    def micOff(self):
+        self.mic_active = False
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

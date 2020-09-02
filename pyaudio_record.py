@@ -2,15 +2,15 @@ import pyaudio
 import wave
 
 CHUNK = 1024
-FORMAT = pyaudio.paFloat32
-CHANNELS = 2
-RATE = 48000
+
+p = pyaudio.PyAudio()
+inputDevice = p.get_default_input_device_info()
+
+FORMAT = pyaudio.paInt16
+CHANNELS = inputDevice['maxInputChannels']
+RATE = int(inputDevice['defaultSampleRate'])
 
 def record():
-
-    p = pyaudio.PyAudio()
-    input_device = p.get_default_input_device_info()
-
     stream = p.open(
         format=FORMAT,
 		channels=CHANNELS,

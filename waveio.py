@@ -3,17 +3,19 @@ import pyaudio
 import wave
 import time
 import matplotlib.pyplot as plt
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 
-class WaveIO():
+class Wave(QObject):
+    finished = pyqtSignal()
+    update = pyqtSignal(list)
 
-    def __init__(self, fname):
+    def __init__(self):
+        super().__init__()
+
         self.pa = pyaudio.PyAudio()
-        self.wave_file = wave.open(fname, 'rb')
-        self.nchannels, self.sampwidth, self.framerate, self.nframes, _, _ = self.wave_file.getparams()
-        self.timestep = np.reciprocal(float(self.framerate))
-        self.wave_format = self.pa.get_format_from_width(self.sampwidth)
-        self.np_wave_format = self.pyAudioToNumpy(self.wave_format)
+
         self.chunk = 256
+        self.filename = None
 
         self.bins = np.array([
         63.571, 67.35, 71.356, 75.598, 80.092, 84.836, 89.882, 95.246, 100.91,
@@ -31,71 +33,89 @@ class WaveIO():
         'G#4', 'A4', 'A#4', 'B4', 'C5', 'C#5', 'D5', 'D#5', 'E5', 'F5', 'F#5',
         'G5', 'G#5', 'A5', 'A#5', 'B5', 'C6'])
 
-    def read_wave(self, callback):
-        # open stream using callback (3)
+
+    def setFileName(self, str):
+        self.filename = str
+
+    #def readWave(self, callback):
+    @pyqtSlot()
+    def readWave(self):
+        if self.filename is None:
+            self.finished.emit()
+
+        waveFile = wave.open(self.filename, 'rb')
+        nchannels, sampwidth, framerate, nframes, _, _ = waveFile.getparams()
+        waveFormat = self.pa.get_format_from_width(sampwidth)
+        npWaveFormat = self.pyAudioToNumpy(waveFormat)
+
         stream = self.pa.open(
-                format=self.wave_format,
-                channels=self.nchannels,
-                rate=self.framerate,
+                format=waveFormat,
+                channels=nchannels,
+                rate=framerate,
                 output=True)
 
-        data = self.wave_file.readframes(self.chunk*15)
+        data = waveFile.readframes(self.chunk*15)
         stream.write(data)
 
-        conv_data = np.frombuffer(data, dtype=self.np_wave_format)[::2]
+        convData = np.frombuffer(data, dtype=npWaveFormat)[::2]
 
-        chunk = self.wave_file.readframes(self.chunk)
+        chunk = waveFile.readframes(self.chunk)
 
         while len(chunk) > 0:
             stream.write(chunk)
 
-            conv_chunk = np.frombuffer(chunk, dtype=self.np_wave_format)[::2]
+            convChunk = np.frombuffer(chunk, dtype=npWaveFormat)[::2]
 
-            conv_data = np.append(conv_data, conv_chunk)
-            callback(self.analyze_data(conv_data))
+            convData = np.append(convData, convChunk)
+            #callback(self.analyzeData(convData))
+            results = self.analyzeData(convData, framerate)
+            self.update.emit(results)
 
-            conv_data = conv_data[self.chunk:]
+            convData = convData[self.chunk:]
 
-            chunk = self.wave_file.readframes(self.chunk)
+            chunk = waveFile.readframes(self.chunk)
 
         stream.stop_stream()
         stream.close()
 
+        self.finished.emit()
+
     #perform fft analysis, requires 1-dimensional data
-    def analyze_data(self, data):
+    def analyzeData(self, data, framerate):
+        timestep = np.reciprocal(float(framerate))
+
         spectrum = np.fft.fft(data)
-        frequency = np.fft.fftfreq(spectrum.size, d=self.timestep)
+        frequency = np.fft.fftfreq(spectrum.size, d=timestep)
         index = np.where(np.logical_and(frequency < self.bins[-1], frequency > self.bins[0]))
 
-        fft_spec = np.abs(self.timestep*spectrum[index].real)
-        fft_freq = frequency[index]
+        fftSpec = np.abs(timestep*spectrum[index].real)
+        fftFreq = frequency[index]
 
-        if fft_spec.size == 0 or np.amax(fft_spec) == 0.:
+        if fftSpec.size == 0 or np.amax(fftSpec) == 0.:
             return []
 
-        fft_spec *= np.reciprocal(np.amax(fft_spec))
+        fftSpec *= np.reciprocal(np.amax(fftSpec))
 
-        aud_threshold = 0.5
+        audThreshold = 0.5
 
-        aud_ind = np.where(fft_spec > aud_threshold)
-        aud_freqs = fft_freq[aud_ind]
-        aud_specs = fft_spec[aud_ind]
+        audInd = np.where(fftSpec > audThreshold)
+        audFreqs = fftFreq[audInd]
+        audSpecs = fftSpec[audInd]
 
         specs = np.zeros_like(self.notes, dtype=float)
 
-        digi_freqs = np.digitize(aud_freqs, self.bins)
-        for i in range(digi_freqs.size):
-            if specs[digi_freqs[i]] < aud_specs[i]:
-                specs[digi_freqs[i]] = aud_specs[i]
+        digiFreqs = np.digitize(audFreqs, self.bins)
+        for i in range(digiFreqs.size):
+            if specs[digiFreqs[i]] < audSpecs[i]:
+                specs[digiFreqs[i]] = audSpecs[i]
 
-        aud_notes_ind = np.where(specs > 0.)
-        aud_notes = self.notes[aud_notes_ind]
-        aud_notes_specs = specs[aud_notes_ind]
+        audNotesInd = np.where(specs > 0.)
+        audNotes = self.notes[audNotesInd]
+        audNotesSpecs = specs[audNotesInd]
 
-        #self.drawPlotlyGraphs(data, fft_freq, fft_spec)
-        return list(zip(aud_notes_ind, aud_notes, aud_notes_specs))
+        return list(zip(audNotesInd, audNotes, audNotesSpecs))
 
-    def drawPlotlyGraphs(self, data, fft_freq, fft_spec):
+    def drawPlotlyGraphs(self, data, fftFreq, fftSpec):
         length = data.shape[0] / self.framerate
         time_lin = np.linspace(0, length, data.shape[0])
 
@@ -115,7 +135,7 @@ class WaveIO():
         plt.xlabel('Frequency')
         plt.ylabel('Signal')
         plt.title('Spectrum')
-        data2.plot(fft_freq, fft_spec, color='blue', linestyle='solid', marker='None', label='FFT', linewidth=1.5)
+        data2.plot(fftFreq, fftSpec, color='blue', linestyle='solid', marker='None', label='FFT', linewidth=1.5)
         plt.legend()
         plt.minorticks_on()
         # Show the data
@@ -133,5 +153,5 @@ class WaveIO():
         return formats[format]
 
 if __name__ == '__main__':
-    waveio = WaveIO('.\\output.wav')
-    waveio.read_wave(lambda x: print(x))
+    waveio = LoadWave('.\\output.wav')
+    waveio.readWave(lambda x: print(x))

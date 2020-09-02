@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QIcon, QPainter, QBrush, QPen, QColor
-from PyQt5.QtCore import Qt, QRect
+from PyQt5.QtCore import Qt, QRect, pyqtSlot
 import numpy as np
 
 class VisWidget(QWidget):
@@ -53,8 +53,6 @@ class VisWidget(QWidget):
         painter.begin(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        #painter.drawText(self.width/2., 10, 'test')
-
         painter.setPen(Qt.white)
 
         for i in range(self.numSlices):
@@ -84,6 +82,7 @@ class VisWidget(QWidget):
         self.radiiCoeffs = np.zeros_like(self.notes, dtype=float)
         self.repaint()
 
+    @pyqtSlot(list)
     def updateVis(self, changeData):
         for noteInd, _, noteVol in changeData:
             self.radiiCoeffs[noteInd] = noteVol
